@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>Quản lý chi tiêu cá nhân</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+:root{--thu:#2e7d32;--chi:#c62828;--bc:#1565c0}
+body{font-family:Arial;background:#f2f4f8;margin:0}
+input,select{width:100%;padding:8px;margin:6px 0}
+button{
+ padding:8px 14px;
+ background:#1976d2;
+ color:#fff;
+ border:none;
+ border-radius:6px;
+ cursor:pointer;
+ font-weight:bold;
+ box-shadow:0 4px 6px rgba(0,0,0,.4);
+}
+button:active{transform:translateY(2px)}
+.btn-del{background:#d32f2f}
+.tabs{display:flex;background:#ddd;padding:5px}
+.tabs button{flex:1;font-weight:bold}
+.tabs .thu.active{background:var(--thu)}
+.tabs .chi.active{background:var(--chi)}
+.tabs .bc.active{background:var(--bc)}
+.tab-content{display:none;padding:15px}
+.tab-content.active{display:block}
+.table-container{max-height:240px;overflow:auto}
+table{width:100%;border-collapse:collapse;background:#fff}
+th,td{border:1px solid #ddd;padding:6px;text-align:center}
+.topbar{display:flex;justify-content:center;padding:10px;font-weight:bold}
+.summary{display:flex;gap:10px;margin-bottom:6px}
+.summary div{
+ flex:1;
+ padding:12px;
+ border-radius:8px;
+ color:#fff;
+ font-weight:bold;
+ text-shadow:1px 1px 2px #000;
+ box-shadow:0 4px 8px rgba(0,0,0,.4);
+}
+.thuBox{background:var(--thu)}
+.chiBox{background:var(--chi)}
+.duBox{background:#555}
+</style>
+</head>
+
+<body>
+
+<div id="app">
+
+<div class="topbar">QUẢN LÝ THU CHI</div>
+
+<div class="tabs">
+<button class="thu active" onclick="openTab('thu',this)">Thu</button>
+<button class="chi" onclick="openTab('chi',this)">Chi</button>
+<button class="bc" onclick="openTab('baoCao',this)">Báo cáo</button>
+</div>
+
+<!-- THU -->
+<div id="thu" class="tab-content active">
+<select id="thuNguon"></select>
+<input id="thuNguonMoi" placeholder="Nguồn thu mới">
+<button onclick="themNguon('thu')">Lưu nguồn</button>
+<button class="btn-del" onclick="xoaNguon('thu')">Xóa nguồn</button>
+
+<input id="thuNoiDung" placeholder="Nội dung">
+<input id="thuTien" type="number" placeholder="Số tiền">
+<input id="thuNgay" type="date">
+<button onclick="luuThu()">Lưu</button>
+
+<div class="table-container">
+<table>
+<thead><tr><th>#</th><th>Nội dung</th><th>Tiền</th><th>Ngày</th><th>Xóa</th></tr></thead>
+<tbody id="bangThu"></tbody>
+</table>
+</div>
+</div>
+
+<!-- CHI -->
+<div id="chi" class="tab-content">
+<select id="chiNguon"></select>
+<input id="chiNguonMoi" placeholder="Mục chi mới">
+<button onclick="themNguon('chi')">Lưu mục</button>
+<button class="btn-del" onclick="xoaNguon('chi')">Xóa mục</button>
+
+<input id="chiNoiDung" placeholder="Nội dung">
+<input id="chiTien" type="number" placeholder="Số tiền">
+<input id="chiNgay" type="date">
+<button onclick="luuChi()">Lưu</button>
+
+<div class="table-container">
+<table>
+<thead><tr><th>#</th><th>Nội dung</th><th>Tiền</th><th>Ngày</th><th>Xóa</th></tr></thead>
+<tbody id="bangChi"></tbody>
+</table>
+</div>
+</div>
+
+<!-- BAO CAO -->
+<div id="baoCao" class="tab-content">
+<div class="summary">
+<div class="thuBox">Thu<br><span id="tongThu">0</span></div>
+<div class="chiBox">Chi<br><span id="tongChi">0</span></div>
+<div class="duBox">Số dư<br><span id="soDu">0</span></div>
+</div>
+
+<select id="bcLoai">
+<option value="all">Thu + Chi</option>
+<option value="thu">Chỉ Thu</option>
+<option value="chi">Chỉ Chi</option>
+</select>
+<input id="bcThang" placeholder="Tháng">
+<input id="bcNam" placeholder="Năm">
+<button onclick="xemBaoCao()">Xem</button>
+
+<canvas id="chart"></canvas>
+<canvas id="chartLineDay"></canvas>
+<canvas id="chartBalanceDay"></canvas>
+
+<div class="table-container">
+<table>
+<thead><tr><th>Loại</th><th>Nội dung</th><th>Ngày</th><th>Số tiền</th></tr></thead>
+<tbody id="bangBC"></tbody>
+</table>
+</div>
+
+<button onclick="xuatExcel()">Xuất Excel</button>
+</div>
+
+</div>
+
+<script>
+let thuList = JSON.parse(localStorage.getItem('thuList') || '[]');
+let chiList = JSON.parse(localStorage.getItem('chiList') || '[]');
+let thuNguonList = JSON.parse(localStorage.getItem('thuNguonList') || '["Lương"]');
+let chiNguonList = JSON.parse(localStorage.getItem('chiNguonList') || '["Ăn uống"]');
+
+let editThu=-1,editChi=-1,chart=null,chartLineDay=null,chartBalanceDay=null;
+
+function save(){
+ localStorage.setItem('thuList', JSON.stringify(thuList));
+ localStorage.setItem('chiList', JSON.stringify(chiList));
+ localStorage.setItem('thuNguonList', JSON.stringify(thuNguonList));
+ localStorage.setItem('chiNguonList', JSON.stringify(chiNguonList));
+}
+
+function loadNguon(){
+ thuNguon.innerHTML=thuNguonList.map(n=>`<option>${n}</option>`).join('');
+ chiNguon.innerHTML=chiNguonList.map(n=>`<option>${n}</option>`).join('');
+}
+
+function themNguon(l){
+ let i=document.getElementById(l+'NguonMoi');
+ if(!i.value)return;
+ (l==='thu'?thuNguonList:chiNguonList).push(i.value);
+ i.value='';loadNguon();save();
+}
+
+function xoaNguon(l){
+ let sel=l==='thu'?thuNguon:chiNguon;
+ let arr=l==='thu'?thuNguonList:chiNguonList;
+ arr.splice(arr.indexOf(sel.value),1);
+ loadNguon();save();
+}
+
+function luuThu(){
+ let o={noiDung:thuNoiDung.value,tien:+thuTien.value,ngay:thuNgay.value};
+ editThu>-1?thuList[editThu]=o:thuList.push(o);
+ editThu=-1;
+ thuNoiDung.value="";thuTien.value="";thuNgay.value="";
+ save();render();
+}
+
+function luuChi(){
+ let o={noiDung:chiNoiDung.value,tien:+chiTien.value,ngay:chiNgay.value};
+ editChi>-1?chiList[editChi]=o:chiList.push(o);
+ editChi=-1;
+ chiNoiDung.value="";chiTien.value="";chiNgay.value="";
+ save();render();
+}
+
+function render(){
+ bangThu.innerHTML=thuList.map((d,i)=>`
+<tr>
+<td>${i+1}</td><td>${d.noiDung}</td><td>${d.tien}</td><td>${d.ngay}</td>
+<td><button onclick="xoaThu(${i})">X</button></td>
+</tr>`).join('');
+
+ bangChi.innerHTML=chiList.map((d,i)=>`
+<tr>
+<td>${i+1}</td><td>${d.noiDung}</td><td>${d.tien}</td><td>${d.ngay}</td>
+<td><button onclick="xoaChi(${i})">X</button></td>
+</tr>`).join('');
+}
+
+function xoaThu(i){thuList.splice(i,1);save();render()}
+function xoaChi(i){chiList.splice(i,1);save();render()}
+
+function openTab(id,btn){
+ document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+ document.getElementById(id).classList.add('active');
+ document.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('active'));
+ btn.classList.add('active');
+}
+
+function xemBaoCao(){
+ let t=thuList.reduce((a,b)=>a+b.tien,0);
+ let c=chiList.reduce((a,b)=>a+b.tien,0);
+ tongThu.innerText=t;
+ tongChi.innerText=c;
+ soDu.innerText=t-c;
+}
+
+function xuatExcel(){
+ let csv="Loai,Noi dung,Ngay,So tien\n";
+ thuList.forEach(d=>csv+=`Thu,${d.noiDung},${d.ngay},${d.tien}\n`);
+ chiList.forEach(d=>csv+=`Chi,${d.noiDung},${d.ngay},${d.tien}\n`);
+ let a=document.createElement('a');
+ a.href=URL.createObjectURL(new Blob([csv]));
+ a.download='bao_cao.csv';
+ a.click();
+}
+
+window.onload=function(){
+ loadNguon();
+ render();
+}
+</script>
+
+</body>
+</html>
